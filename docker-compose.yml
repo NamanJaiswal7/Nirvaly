@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  nivraly-db:
+    image: postgres:16-alpine
+    container_name: nivraly-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nivraly
+      POSTGRES_PASSWORD: nivraly_dev_2024
+      POSTGRES_DB: nivraly_db
+    ports:
+      - '5432:5432'
+    volumes:
+      - nivraly_pgdata:/var/lib/postgresql/data
+
+volumes:
+  nivraly_pgdata:

@@ -1,0 +1,232 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────────
+// User & Roommate Profile (User Bounded Context)
+// ──────────────────────────────────────────────
+
+enum UserRole {
+  TENANT
+  LANDLORD
+  ADMIN
+}
+
+model User {
+  id                 String   @id @default(uuid())
+  email              String   @unique
+  password           String   @default("tenant123")
+  name               String
+  phone              String?
+  avatarUrl          String?
+  role               UserRole @default(TENANT)
+  verificationStatus String   @default("UNVERIFIED")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  roommateProfile RoommateProfile?
+  groupMembers    GroupMember[]
+  votes           Vote[]
+  matchesAsUser1  Match[]          @relation("MatchUser1")
+  matchesAsUser2  Match[]          @relation("MatchUser2")
+  notifications   Notification[]
+  sentMessages    GroupMessage[]
+
+  @@map("users")
+}
+
+model RoommateProfile {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  lifestyleTags String[]
+  dealBreakers  String[]
+  budgetMin     Int
+  budgetMax     Int
+  bio           String?
+  city          String   @default("Vilnius")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("roommate_profiles")
+}
+
+// ──────────────────────────────────────────────
+// Roommate Matching (Roommate Bounded Context)
+// ──────────────────────────────────────────────
+
+enum MatchStatus {
+  PENDING
+  LIKED
+  MUTUAL
+  PASSED
+}
+
+model Match {
+  id                 String      @id @default(uuid())
+  userId1            String
+  userId2            String
+  compatibilityScore Float
+  status             MatchStatus @default(PENDING)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  user1 User @relation("MatchUser1", fields: [userId1], references: [id], onDelete: Cascade)
+  user2 User @relation("MatchUser2", fields: [userId2], references: [id], onDelete: Cascade)
+
+  @@unique([userId1, userId2])
+  @@map("matches")
+}
+
+// ──────────────────────────────────────────────
+// Group Formation (Roommate Bounded Context)
+// ──────────────────────────────────────────────
+
+enum GroupStatus {
+  FORMING
+  ACTIVE
+  VOTING
+  APPLICATION_SUBMITTED
+}
+
+model Group {
+  id        String      @id @default(uuid())
+  name      String
+  adminId   String
+  status    GroupStatus  @default(FORMING)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  members  GroupMember[]
+  polls    Poll[]
+  messages GroupMessage[]
+
+  @@map("groups")
+}
+
+model GroupMember {
+  id       String   @id @default(uuid())
+  groupId  String
+  userId   String
+  joinedAt DateTime @default(now())
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@map("group_members")
+}
+
+// ──────────────────────────────────────────────
+// Property Voting / Polls (Roommate Bounded Context)
+// ──────────────────────────────────────────────
+
+enum PollStatus {
+  OPEN
+  PASSED
+  FAILED
+  EXPIRED
+  APPLIED
+}
+
+enum VoteDecision {
+  LIKE
+  PASS
+}
+
+model Poll {
+  id         String     @id @default(uuid())
+  groupId    String
+  propertyId String
+  status     PollStatus @default(OPEN)
+  expiresAt  DateTime
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [propertyId], references: [id])
+  votes    Vote[]
+
+  @@map("polls")
+}
+
+model Vote {
+  id        String       @id @default(uuid())
+  pollId    String
+  userId    String
+  decision  VoteDecision
+  createdAt DateTime     @default(now())
+
+  poll Poll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, userId])
+  @@map("votes")
+}
+
+// ──────────────────────────────────────────────
+// Property Listings (Property Bounded Context)
+// ──────────────────────────────────────────────
+
+model Property {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  city        String
+  address     String
+  price       Int
+  rooms       Int
+  area        Float?
+  features    String[]
+  images      String[]
+  landlordId  String
+  isVerified  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  polls Poll[]
+
+  @@map("properties")
+}
+
+// ──────────────────────────────────────────────
+// Notifications (Cross-cutting)
+// ──────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String   // GROUP_INVITE, POLL_CREATED, APPLICATION_SUBMITTED
+  title     String
+  body      String
+  data      Json?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+// ──────────────────────────────────────────────
+// Group Messaging (Roommate Bounded Context)
+// ──────────────────────────────────────────────
+
+model GroupMessage {
+  id        String   @id @default(uuid())
+  groupId   String
+  userId    String
+  content   String
+  createdAt DateTime @default(now())
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("group_messages")
+}
